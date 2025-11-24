@@ -1,0 +1,19 @@
+.build_qemu
+*.md
+qemu-*
+spec2006_work/.prepare_spec2006
+spec2006_work/spec2006_installed/
+spec2006_work/results/
+spec2006_work/sift_results/
+spec2006_work/simpoint_results/
+
+bbv_results
+
+# ISO files are too large for Git LFS
+*.iso
+SPECCPU_2006_v1.1.iso
+cpu2017-1_0_2.iso
+
+spec2017_work/.prepare_spec2017
+spec2017_work/results/
+spec2017_work/spec2017_installed/
