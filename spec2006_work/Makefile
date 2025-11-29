@@ -4,9 +4,10 @@
 
 # Configuration
 SPEC_ROOT := $(CURDIR)/spec2006_installed
-QEMU := /home/kimura/work/bench_trace_env/qemu-10.0.6/build/qemu-riscv64
-# QEMU := $(abspath ../qemu-9.0.0/build)/qemu-riscv64
-QEMU_BUILD_DIR := $(abspath ../qemu-9.0.0/build)
+ISO_FILE := $(abspath ../SPECCPU_2006_v1.1.iso)
+CDROM_DIR := $(abspath ../spec2006_cdrom)
+QEMU := $(abspath ../qemu-9.2.4/build)/qemu-riscv64
+QEMU_BUILD_DIR := $(abspath ../qemu-9.2.4/build)
 RISCV_SYSROOT := /riscv-linux/sysroot # inside docker container
 QEMU_FLAGS := -L $(RISCV_SYSROOT)
 BBV_PLUGIN := $(QEMU_BUILD_DIR)/contrib/plugins/libbbv.so
@@ -19,6 +20,9 @@ SIMULATION_DIR := sniper_results
 SIMPOINT_INTERVAL := 100000000
 SIMPOINT := $(abspath ../SimPoint/bin/simpoint)
 SIMPOINT_K := 30
+
+PATH := $(QEMU_BUILD_DIR):$(PATH)
+export PATH
 
 # Sniper configuration for SIFT generation and simulation
 # SNIPER_ROOT := $(abspath /home/kimura/work/sniper/prave_date2026/sniper)
