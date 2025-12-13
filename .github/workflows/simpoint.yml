@@ -60,11 +60,9 @@ jobs:
             NPROC=\$((\$(nproc) / 2))
             echo \"Using \${NPROC} parallel jobs (half of available CPUs)\"
             # Run the full pipeline
-            make extract_iso ISO_FILE=/home/kimura/spec_bechmarks/SPECCPU_2006_v1.1.iso && \
-            make prepare && \
+            make prepare CDROM_DIR=/home/kimura/spec_bechmarks/spec2006_cdrom && \
             make build -j\${NPROC} && \
             make run_bbv -j\${NPROC} && \
             make build_simpoint && \
             make run_simpoint -j\${NPROC}
           "
-          
