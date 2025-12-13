@@ -46,3 +46,25 @@ jobs:
 
     - name: Say Hello
       run: docker run --rm -v "${PWD}:/workspace" -w /workspace simpoint-runner:latest echo "Hello, world!"
+
+    - name: Run BBV and SimPoint analysis
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace/spec2006_work \
+          -e RISCV=/riscv-linux \
+          -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+          simpoint-runner:latest bash -c "
+            # Get number of CPUs available in the container (use half)
+            NPROC=\$((\$(nproc) / 2))
+            echo \"Using \${NPROC} parallel jobs (half of available CPUs)\"
+            # Run the full pipeline
+            make extract_iso ISO_FILE=/home/kimura/spec_bechmarks/SPECCPU_2006_v1.1.iso && \
+            make prepare && \
+            make build -j\${NPROC} && \
+            make run_bbv -j\${NPROC} && \
+            make build_simpoint && \
+            make run_simpoint -j\${NPROC}
+          "
+
+      
