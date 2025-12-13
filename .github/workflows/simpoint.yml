@@ -21,18 +21,31 @@ on:
     # Run regression test once per day at 2:00 AM JST (17:00 UTC previous day)
     - cron: '0 17 * * *'
 
-env:
-  SPEC_ROOT: spec2006_work/spec2006_installed
-  RESULT_DIR: spec2006_work/results
-  BBV_DIR: spec2006_work/bbv_results
-  SIMPOINT_DIR: spec2006_work/simpoint_results
-
 jobs:
   simpoint:
     runs-on: self-hosted
-    timeout-minutes: 360  # 6 hours timeout    
+    timeout-minutes: 360  # 6 hours timeout
+    container:
+      image: simpoint-runner:latest
+      volumes:
+        - ${{ github.workspace }}:/workspace
+      options: --workdir /workspace
+    env:
+      RISCV: /riscv-linux
+      PATH: /workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    - name: Say Hello
-      run: echo "Hello, world!"
+
+    - name: Build Docker image
+      run: |
+        # Build Docker image from repository Dockerfile
+        docker build -t simpoint-runner:latest \
+          --build-arg RISCV_ARG=/riscv-linux \
+          -f Dockerfile .
+
+    - name: Say Hello in Docker Container
+      run: docker run --rm -it simpoint-runner:latest echo "Hello, world!"
+    - name: Check and show hostname
+      run: hostname
