@@ -22,8 +22,22 @@ on:
     - cron: '0 17 * * *'
 
 jobs:
+  build-docker:
+    runs-on: self-hosted
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: |
+        # Build Docker image from repository Dockerfile on the runner server
+        docker build -t simpoint-runner:latest \
+          --build-arg RISCV_ARG=/riscv-linux \
+          -f Dockerfile .
+
   simpoint:
     runs-on: self-hosted
+    needs: build-docker
     timeout-minutes: 360  # 6 hours timeout
     container:
       image: simpoint-runner:latest
@@ -38,14 +52,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Build Docker image
-      run: |
-        # Build Docker image from repository Dockerfile
-        docker build -t simpoint-runner:latest \
-          --build-arg RISCV_ARG=/riscv-linux \
-          -f Dockerfile .
-
-    - name: Say Hello in Docker Container
-      run: docker run --rm -it simpoint-runner:latest echo "Hello, world!"
-    - name: Check and show hostname
+    - name: Show hostname to confirm the command is executed in the container
       run: hostname
+  
