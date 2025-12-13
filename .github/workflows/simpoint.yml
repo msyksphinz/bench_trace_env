@@ -39,19 +39,10 @@ jobs:
     runs-on: self-hosted
     needs: build-docker
     timeout-minutes: 360  # 6 hours timeout
-    container:
-      image: simpoint-runner:latest
-      volumes:
-        - ${{ github.workspace }}:/workspace
-      options: --workdir /workspace
-    env:
-      RISCV: /riscv-linux
-      PATH: /workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Show hostname to confirm the command is executed in the container
-      run: hostname
-  
+    - name: Say Hello
+      run: docker run -it --rm -v "${PWD}:/workspace" -w /workspace simpoint-runner:latest echo "Hello, world!"
