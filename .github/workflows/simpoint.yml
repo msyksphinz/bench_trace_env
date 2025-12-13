@@ -51,6 +51,7 @@ jobs:
       run: |
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
+          -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
           -w /workspace/spec2006_work \
           -e RISCV=/riscv-linux \
           -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
@@ -66,5 +67,4 @@ jobs:
             make build_simpoint && \
             make run_simpoint -j\${NPROC}
           "
-
-      
+          
