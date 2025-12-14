@@ -3,6 +3,7 @@
 # without relying on SPEC's runspec command.
 
 # Configuration
+CURDIR := $(shell pwd)
 SPEC_ROOT := $(CURDIR)/spec2006_installed
 ISO_FILE := $(abspath ../SPECCPU_2006_v1.1.iso)
 CDROM_DIR := $(abspath ../spec2006_cdrom)
@@ -28,7 +29,8 @@ export PATH
 
 # Sniper configuration for SIFT generation and simulation
 # SNIPER_ROOT := $(abspath /home/kimura/work/sniper/prave_date2026/sniper)
-SNIPER_ROOT := /home/kimura/work/riscv/sniper/snipersim
+SNIPER_GIT_URL := https://github.com/msyksphinz/snipersim.git
+SNIPER_ROOT := $(CURDIR)/snipersim
 SNIPER_CONFIG_DIR := $(SNIPER_ROOT)/config
 QEMU_FRONTEND_PLUGIN := $(SNIPER_ROOT)/frontend/qemu-frontend/libqemu-frontend.so
 PIN_HOME := $(SNIPER_ROOT)/pin_kit
@@ -150,6 +152,22 @@ extract_iso: .extract_iso
 prepare: .prepare_spec2006
 .prepare_spec2006:
 	cd $(CDROM_DIR) && ./install.sh -f -d $(PWD)/spec2006_installed
+	touch $@
+
+# Download and build Sniper
+build_sniper: .build_sniper
+.build_sniper: 
+	@echo "=== Downloading Sniper ==="
+	@if [ ! -d "$(SNIPER_ROOT)" ]; then \
+		echo "Cloning Sniper from $(SNIPER_GIT_URL)..."; \
+		cd $(CURDIR)/.. && \
+		git clone $(SNIPER_GIT_URL) $(SNIPER_ROOT) --branch msyksphinz/riscv || exit 1; \
+	fi
+	cd $(SNIPER_ROOT) && \
+	PIN_ROOT=/home/kimura/sniper_tools/pin-3.18-98332-gaebd7b1e6-gcc-linux \
+	CPU2006_ROOT=$(SPEC_ROOT) \
+	bash $(CURDIR)/snipersim/riscv/build-riscv.sh || exit 1; \
+	@echo "=== Sniper build completed ==="
 	touch $@
 
 # Download and build SimPoint

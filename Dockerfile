@@ -148,5 +148,4 @@ RUN wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz && \
     cd - && rm -rf Python2.7.18*
 
 RUN apt-get update && apt-get install libpython3-dev python3-dev
-
 WORKDIR /workspace
