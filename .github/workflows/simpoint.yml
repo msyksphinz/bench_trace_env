@@ -46,12 +46,18 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+
+    - name: Get uid/gid
+      run: |
+        echo "UID=$(id -u)" >> $GITHUB_ENV
+        echo "GID=$(id -g)" >> $GITHUB_ENV
+
     - name: Say Hello
-      run: docker run --rm -v "${PWD}:/workspace" -w /workspace simpoint-runner:latest echo "Hello, world!"
+      run: docker run --rm --user "${UID}:${GID}" -v "${PWD}:/workspace" -w /workspace simpoint-runner:latest echo "Hello, world!"
 
     - name: Run BBV and SimPoint analysis
       run: |
-        docker run --rm \
+        docker run --rm --user "${UID}:${GID}" \
           -v ${{ github.workspace }}:/workspace \
           -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
           -w /workspace/spec2006_work \
