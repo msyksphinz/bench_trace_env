@@ -30,6 +30,7 @@ fi
 # Find all SIFT files in the benchmark directory and convert to absolute paths
 # Look for files matching pattern: subcmd_*/simpoint_*.app0.th0.sift
 if command -v realpath > /dev/null 2>&1; then
+    echo find "${sift_output_dir}" -type f -name "*.app0.th0.sift" # | grep -v "_response" | while read -r f; do realpath "$f"; done | sort
   sift_files=$(find "${sift_output_dir}" -type f -name "*.app0.th0.sift" | grep -v "_response" | while read -r f; do realpath "$f"; done | sort)
 else
   # Fallback: use find with absolute path (results are already absolute if starting dir is absolute)
@@ -50,8 +51,12 @@ mkdir -p "${simulation_output_dir}"
 # Get script directory
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# SQLite conversion script and format (default: json)
+CONVERT_SQLITE_SCRIPT="${script_dir}/convert_sniper_sqlite.py"
+SQLITE_OUTPUT_FORMAT="${SQLITE_OUTPUT_FORMAT:-json}"
+
 # Export environment variables for the script
-export SNIPER_ROOT SIFT_DIR SIMULATION_DIR CONFIG_DIR SIMPOINT_INTERVAL
+export SNIPER_ROOT SIFT_DIR SIMULATION_DIR CONFIG_DIR SIMPOINT_INTERVAL SQLITE_OUTPUT_FORMAT
 BENCHMARK="${benchmark}"
 SCRIPT_DIR="${script_dir}"
 EXTRA_CONFIG_OPTIONS="${extra_config_options}"
@@ -72,7 +77,7 @@ while IFS= read -r sift_file; do
   else
     sift_file_abs=$(cd "$(dirname "${sift_file}")" 2>/dev/null && pwd)/$(basename "${sift_file}") || echo "${sift_file}"
   fi
-  
+
   # Extract subcmd directory name (e.g., subcmd_1)
   # Try Perl regex first, fallback to sed if not available
   if echo "${sift_file_abs}" | grep -oP 'subcmd_\K[0-9]+' > /dev/null 2>&1; then
@@ -84,7 +89,7 @@ while IFS= read -r sift_file; do
     echo "Warning: Could not extract subcmd from ${sift_file}, skipping" >&2
     continue
   fi
-  
+
   # Extract simpoint number from filename (e.g., simpoint_17.app0.th0.sift -> 17)
   sift_basename=$(basename "${sift_file}" .sift)
   if echo "${sift_basename}" | grep -oP 'simpoint_\K[0-9]+' > /dev/null 2>&1; then
@@ -96,22 +101,22 @@ while IFS= read -r sift_file; do
     echo "Warning: Could not extract simpoint from ${sift_file}, skipping" >&2
     continue
   fi
-  
+
   # Create subcmd directory in simulation output
   sniper_subcmd_dir="${simulation_dir_abs}/subcmd_${subcmd_dir}"
   mkdir -p "${sniper_subcmd_dir}"
-  
+
   # Output subdirectory name (same as SIFT basename, in the same directory as the script)
   output_subdir="${sniper_subcmd_dir}/${sift_basename}"
-  
+
   # Generate script file
   script_file="${sniper_subcmd_dir}/run_sniper_simpoint_${simpoint}.app0.th0.sh"
-  
+
   # Calculate roi-icount parameters based on SIMPOINT_INTERVAL
   WARMUP_LENGTH=$((SIMPOINT_INTERVAL * 20 / 100))
   DETAILED_LENGTH=$((SIMPOINT_INTERVAL * 80 / 100))
   ROI_ICOUNT_PARAMS="0:${WARMUP_LENGTH}:${DETAILED_LENGTH}"
-  
+
   # Escape extra_config_options for use in heredoc
   if [ -n "${extra_config_options}" ]; then
     # Use printf %q to properly escape arguments
@@ -119,7 +124,7 @@ while IFS= read -r sift_file; do
   else
     escaped_extra_opts=""
   fi
-  
+
   cat > "${script_file}" << EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -162,6 +167,21 @@ echo "[${BENCHMARK} Sniper] Saving execution log to: \${log_file}"
 
 if [ \${PIPESTATUS[0]} -eq 0 ]; then
   echo "[${BENCHMARK} Sniper] Completed SimPoint ${simpoint}: ${output_subdir}"
+
+  # Convert sim.stats.sqlite3 to JSON/YAML if it exists
+  sqlite_file="${output_subdir}/sim.stats.sqlite3"
+  if [ -f "\${sqlite_file}" ]; then
+    echo "[${BENCHMARK} Sniper] Converting sqlite3 to ${SQLITE_OUTPUT_FORMAT}..."
+    if [ -f "${CONVERT_SQLITE_SCRIPT}" ]; then
+      python3 "${CONVERT_SQLITE_SCRIPT}" "\${sqlite_file}" --format "${SQLITE_OUTPUT_FORMAT}" || {
+        echo "[${BENCHMARK} Sniper] Warning: Failed to convert sqlite3 file" >&2
+      }
+    else
+      echo "[${BENCHMARK} Sniper] Warning: Conversion script not found: ${CONVERT_SQLITE_SCRIPT}" >&2
+    fi
+  else
+    echo "[${BENCHMARK} Sniper] Warning: sim.stats.sqlite3 not found in ${output_subdir}" >&2
+  fi
 else
   echo "[${BENCHMARK} Sniper] Failed SimPoint ${simpoint}: ${output_subdir} (check \${log_file})" >&2
   exit 1
@@ -169,14 +189,14 @@ fi
 EOF
   chmod +x "${script_file}"
   echo "${script_file}" >> "${all_script_list_file}"
-  
+
 done <<< "${sift_files}"
 
 # Run all generated scripts in parallel
 if [ -f "${all_script_list_file}" ] && [ -s "${all_script_list_file}" ]; then
   num_scripts=$(wc -l < "${all_script_list_file}")
   echo "Generated ${num_scripts} executable script(s)"
-  
+
   if command -v parallel > /dev/null 2>&1; then
     echo "Running simulations in parallel..."
     # Limit parallel jobs to avoid file handle issues
@@ -202,4 +222,3 @@ else
 fi
 
 echo "=== Completed Sniper simulations for ${benchmark} ==="
-

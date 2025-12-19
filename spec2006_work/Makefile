@@ -156,7 +156,7 @@ prepare: .prepare_spec2006
 
 # Download and build Sniper
 build_sniper: .build_sniper
-.build_sniper: 
+.build_sniper:
 	@echo "=== Downloading Sniper ==="
 	@if [ ! -d "$(SNIPER_ROOT)" ]; then \
 		echo "Cloning Sniper from $(SNIPER_GIT_URL)..."; \
@@ -167,7 +167,7 @@ build_sniper: .build_sniper
 	PIN_ROOT=/home/kimura/sniper_tools/pin-3.18-98332-gaebd7b1e6-gcc-linux \
 	CPU2006_ROOT=$(SPEC_ROOT) \
 	bash $(CURDIR)/snipersim/riscv/build-riscv.sh || exit 1; \
-	@echo "=== Sniper build completed ==="
+	echo "=== Sniper build completed ==="
 	touch $@
 
 # Download and build SimPoint
