@@ -43,20 +43,20 @@ export BENCHMARK="${benchmark}" NUM_SUBCMDS="${num_subcmds}" RUN_DIR="${run_dir}
 export SNIPER_ROOT PIN_HOME SNIPER_SIM_LD_PATH QEMU QEMU_FLAGS QEMU_CPU_OPTIONS QEMU_FRONTEND_PLUGIN
 export SIMPOINT_INTERVAL
 
-# 並列実行のジョブ数を環境変数から取得（デフォルトはCPU数）
-# ファイルハンドル制限を考慮して、最大252に制限
+# Get the number of parallel jobs from environment variable (default: number of CPUs)
+# Limit to 8 to avoid file handle limits
 PARALLEL_JOBS="${PARALLEL_JOBS:-$(nproc)}"
-if [ "$PARALLEL_JOBS" -gt 252 ]; then
-  PARALLEL_JOBS=252
+if [ "$PARALLEL_JOBS" -gt 8 ]; then
+  PARALLEL_JOBS=8
 fi
 
-# 全スクリプトファイルのリスト
+# List of all script files
 all_script_list_file="${sift_dir_abs}/.all_script_list.txt"
 rm -f "$all_script_list_file"
 
-# シーケンシャルにスクリプトファイルを生成
+# Generate script files sequentially
 echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw; do
-  # sedコマンドを安全に実行するため、特殊文字をエスケープ
+  # Escape special characters to safely execute sed command
   cmd_clean=$(printf "%s\n" "$cmd_raw" | sed "s| [0-9]*>>* *[^ ]*||g")
    
   simpoint_file="${simpoint_dir_abs}/bbv_${cmd_num}.out.*.simpoints"
@@ -74,14 +74,14 @@ echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw
   sift_subcmd_dir="${sift_dir_abs}/subcmd_${cmd_num}"
   mkdir -p "$sift_subcmd_dir"
 
-  # 相対パス ../run_base_ref_gcc.0000 が参照できるように親ディレクトリ構造を作成
-  # subcmdレベルで1つ作成すれば、すべてのSimPointから参照可能
+  # Create parent directory structure so relative path ../run_base_ref_gcc.0000 can be referenced
+  # Creating one at subcmd level makes it accessible from all SimPoints
   run_base_dir="${sift_subcmd_dir}/run_base_ref_gcc.0000"
   if [ ! -d "$run_base_dir" ]; then
     cp -r "$RUN_DIR" "$run_base_dir" 2>/dev/null || true
   fi
 
-  # SimPointごとのスクリプトファイルを生成
+  # Generate script file for each SimPoint
   paste -d " " "$simpoint_files" "$weights_files" | while IFS=" " read -r simpoint dummy1 weight dummy2; do
     output_base="${sift_subcmd_dir}/simpoint_${simpoint}"
     response_file="${output_base}_response.app0.th0.sift"
@@ -96,20 +96,20 @@ echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw
     original_ld_path="$LD_LIBRARY_PATH"
     sniper_script_ld_path="$original_ld_path"
     
-    # SimPoint の行は「SimPointIndex」のみを想定しているので、
-    # BBV のインターバル長（命令数）は .simpoints ファイル名から取得する。
-    # 例: bbv_1.out.100000000.simpoints -> interval = 100000000
+    # SimPoint line only contains SimPointIndex, so
+    # BBV interval length (number of instructions) is obtained from .simpoints filename.
+    # Example: bbv_1.out.100000000.simpoints -> interval = 100000000
     base_name="$(basename "$simpoint_files" .simpoints)"
     interval="$SIMPOINT_INTERVAL"
     # fast_forward_target = SimPointIndex * interval
     fast_forward_target=$((simpoint * interval))
     detailed_target="${interval}"
 
-    # 各SimPoint用の個別実行ディレクトリを作成
+    # Create individual execution directory for each SimPoint
     simpoint_run_dir="${sift_subcmd_dir}/run_dir_simpoint_${simpoint}"
     mkdir -p "$simpoint_run_dir"
     
-    # 各SimPoint用のスクリプトファイルを生成
+    # Generate script file for each SimPoint
     script_file="${sift_subcmd_dir}/run_sift_simpoint_${simpoint}.sh"
     cat > "$script_file" << EOF
 #!/usr/bin/env bash
@@ -117,11 +117,11 @@ set -euo pipefail
 
 echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] Generating SIFT for SimPoint ${simpoint} (weight: ${weight})";
 
-# 個別実行ディレクトリにRUN_DIRの内容をコピー（初回のみ）
-# run_base_ref_gcc.0000はsubcmdレベルで既に作成済みなので、実行ディレクトリの内容のみコピー
+# Copy RUN_DIR contents to individual execution directory (first time only)
+# run_base_ref_gcc.0000 is already created at subcmd level, so only copy execution directory contents
 if [ ! -f "${simpoint_run_dir}/.copied" ]; then
   if [ -d "${RUN_DIR}" ]; then
-    # RUN_DIRの内容をコピー（空の場合も対応）
+    # Copy RUN_DIR contents (handle empty case as well)
     if [ "\$(ls -A "${RUN_DIR}" 2>/dev/null)" ]; then
       cp -r "${RUN_DIR}"/* "${simpoint_run_dir}/" 2>&1 || {
         echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] Warning: Failed to copy some files from ${RUN_DIR} to ${simpoint_run_dir}" >&2;
@@ -159,7 +159,7 @@ done
 
 echo $all_script_list_file
 
-# 生成したすべてのスクリプトファイルを並列実行
+# Execute all generated script files in parallel
 if [ -f "$all_script_list_file" ] && [ -s "$all_script_list_file" ]; then
   num_scripts=$(wc -l < "$all_script_list_file")
   echo "=== Executing $num_scripts scripts in parallel ==="
