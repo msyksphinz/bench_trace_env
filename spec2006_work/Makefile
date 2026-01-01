@@ -331,10 +331,14 @@ $(RUN_SIFT_TARGETS):
 # Generate SIFT, run Sniper, and cleanup for a specific SimPoint
 # Format: run_sift_<benchmark>_<subcmd>_<simpoint>
 # Example: run_sift_429.mcf_1_17
-run_sift_%_%_%: benchmark=$(word 1,$(subst _, ,$(subst run_sift_,,$@)))
-run_sift_%_%_%: subcmd=$(word 2,$(subst _, ,$(subst run_sift_,,$@)))
-run_sift_%_%_%: simpoint=$(word 3,$(subst _, ,$(subst run_sift_,,$@)))
-run_sift_%_%_%:
+# run_sift_%_%_%: benchmark=$(word 1,$(subst _, ,$(subst run_sift_,,$@)))
+# run_sift_%_%_%: subcmd=$(word 2,$(subst _, ,$(subst run_sift_,,$@)))
+# run_sift_%_%_%: simpoint=$(word 3,$(subst _, ,$(subst run_sift_,,$@)))
+# run_sift_%_%_%:
+run_sift_%:
+	$(eval benchmark := $(word 1,$(subst _, ,$(subst run_sift_,,$@))))
+	$(eval subcmd    := $(word 2,$(subst _, ,$(subst run_sift_,,$@))))
+	$(eval simpoint  := $(word 3,$(subst _, ,$(subst run_sift_,,$@))))
 	@SPEC_ROOT=$(SPEC_ROOT) \
 	SPECINVOKE=$(SPECINVOKE) \
 	SIMPOINT_DIR=$(SIMPOINT_DIR) \
