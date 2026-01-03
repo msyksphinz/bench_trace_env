@@ -56,9 +56,17 @@ if [ -z "$simpoint_files" ] || [ -z "$weights_files" ]; then
 fi
 
 # Find weight for this simpoint
-weight=$(paste -d " " "$simpoint_files" "$weights_files" | awk -v sp="$simpoint" '$1 == sp {print $2; exit}')
-if [ -z "$weight" ]; then
+# SimPoints file format: <simpoint_index> <cluster_id>
+# Weights file format: <weight> <cluster_id>
+# We need to find the cluster_id for this simpoint_index, then get the weight
+cluster_id=$(awk -v sp="$simpoint" '$1 == sp {print $2; exit}' "$simpoint_files")
+if [ -z "$cluster_id" ]; then
   echo "Error: SimPoint ${simpoint} not found in ${simpoint_files}"
+  exit 1
+fi
+weight=$(awk -v cid="$cluster_id" '$2 == cid {print $1; exit}' "$weights_files")
+if [ -z "$weight" ]; then
+  echo "Error: Weight not found for cluster_id ${cluster_id} in ${weights_files}"
   exit 1
 fi
 
@@ -77,10 +85,11 @@ if [ ! -d "$run_base_dir" ]; then
 fi
 
 # Clean command
-cmd_clean=$(printf "%s\n" "$cmd_raw" | sed "s| [0-9]*>>* *[^ ]*||g")
-cmd_suffix=$(echo "$cmd_clean" | sed "s|^[^ ]* ||")
-cmd_suffix_noL=$(echo "$cmd_suffix" | sed "s|^-L [^ ]* ||")
-cmd_suffix_noL=$(echo "$cmd_suffix_noL" | sed "s|^ *||")
+# Use different delimiter for sed to avoid issues with special characters in cmd_raw
+cmd_clean=$(printf "%s\n" "$cmd_raw" | sed 's| [0-9]*>>* *[^ ]*||g')
+cmd_suffix=$(echo "$cmd_clean" | sed 's|^[^ ]* ||')
+cmd_suffix_noL=$(echo "$cmd_suffix" | sed 's|^-L [^ ]* ||')
+cmd_suffix_noL=$(echo "$cmd_suffix_noL" | sed 's|^ *||')
 
 # Set up environment
 sniper_vm_ld_path="$SNIPER_SIM_LD_PATH"
@@ -160,9 +169,13 @@ ROI_ICOUNT_PARAMS="0:${WARMUP_LENGTH}:${DETAILED_LENGTH}"
 mkdir -p "${output_subdir}"
 
 # Run Sniper
-cd "${output_subdir}"
+# Ensure output_subdir is absolute path
+mkdir -p "${output_subdir}"
+output_subdir_abs="$(cd "${output_subdir}" && pwd)"
+cd "${output_subdir_abs}"
 RUN_SNIPER="${SNIPER_ROOT}/run-sniper"
 CONFIG_BASE="${SNIPER_CONFIG_DIR}/riscv.cfg"
+LOG_FILE="${output_subdir_abs}/sniper.log"
 
 "${RUN_SNIPER}" \
   -v \
@@ -177,10 +190,10 @@ CONFIG_BASE="${SNIPER_CONFIG_DIR}/riscv.cfg"
   -c "perf_model/l1_dcache/outstanding_misses=48" \
   -c "perf_model/l2_cache/outstanding_misses=9" \
   --traces="${sift_file}" \
-  > "${output_subdir}/sniper.log" 2>&1
+  > "${LOG_FILE}" 2>&1
 
-if [ ! -f "${output_subdir}/sim.out" ]; then
-  echo "Error: Sniper simulation failed. Check log: ${output_subdir}/sniper.log"
+if [ ! -f "${output_subdir_abs}/sim.out" ]; then
+  echo "Error: Sniper simulation failed. Check log: ${LOG_FILE}"
   exit 1
 fi
 
@@ -188,12 +201,12 @@ echo "[${benchmark} Sniper subcmd=${subcmd} simpoint=${simpoint}] Simulation com
 
 # Convert SQLite to JSON/YAML if needed
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "${output_subdir}/sim.stats.sqlite3" ]; then
+if [ -f "${output_subdir_abs}/sim.stats.sqlite3" ]; then
   SQLITE_OUTPUT_FORMAT="${SQLITE_OUTPUT_FORMAT:-json}" \
   "${script_dir}/convert_sniper_sqlite.py" \
-    "${output_subdir}/sim.stats.sqlite3" \
+    "${output_subdir_abs}/sim.stats.sqlite3" \
     --format "${SQLITE_OUTPUT_FORMAT:-json}" \
-    > "${output_subdir}/sim.stats.${SQLITE_OUTPUT_FORMAT:-json}" 2>&1 || {
+    > "${output_subdir_abs}/sim.stats.${SQLITE_OUTPUT_FORMAT:-json}" 2>&1 || {
     echo "Warning: Failed to convert SQLite to ${SQLITE_OUTPUT_FORMAT:-json}" >&2;
   }
 fi
