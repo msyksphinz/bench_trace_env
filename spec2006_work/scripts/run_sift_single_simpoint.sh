@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Get script directory at the start (before any cd commands)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [ "$#" -ne 4 ]; then
   echo "Usage: SPEC_ROOT=... SPECINVOKE=... SIMPOINT_DIR=... SIFT_DIR=... SNIPER_ROOT=... PIN_HOME=... SNIPER_SIM_LD_PATH=... QEMU=... QEMU_FLAGS=... QEMU_CPU_OPTIONS=... SNIPER_CONFIG_DIR=... SIMULATION_DIR=... $0 <benchmark> <subcmd> <simpoint> <simpoint_interval>" >&2
   exit 1
@@ -85,11 +88,15 @@ if [ ! -d "$run_base_dir" ]; then
 fi
 
 # Clean command
-# Use different delimiter for sed to avoid issues with special characters in cmd_raw
-cmd_clean=$(printf "%s\n" "$cmd_raw" | sed 's| [0-9]*>>* *[^ ]*||g')
-cmd_suffix=$(echo "$cmd_clean" | sed 's|^[^ ]* ||')
-cmd_suffix_noL=$(echo "$cmd_suffix" | sed 's|^-L [^ ]* ||')
-cmd_suffix_noL=$(echo "$cmd_suffix_noL" | sed 's|^ *||')
+# Remove redirects and clean up command line
+# Use awk for safer string processing
+cmd_clean=$(printf "%s\n" "$cmd_raw" | awk '{
+  # Remove redirect patterns: " [0-9]*>>* *[^ ]*"
+  gsub(/ [0-9]*>>* *[^ ]*/, "")
+  print
+}')
+cmd_suffix=$(echo "$cmd_clean" | awk '{$1=""; sub(/^[ \t]+/, ""); print}')
+cmd_suffix_noL=$(echo "$cmd_suffix" | awk '{gsub(/^-L [^ ]* /, ""); gsub(/^[ \t]+/, ""); print}')
 
 # Set up environment
 sniper_vm_ld_path="$SNIPER_SIM_LD_PATH"
@@ -200,10 +207,9 @@ fi
 echo "[${benchmark} Sniper subcmd=${subcmd} simpoint=${simpoint}] Simulation completed"
 
 # Convert SQLite to JSON/YAML if needed
-script_dir="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "${output_subdir_abs}/sim.stats.sqlite3" ]; then
   SQLITE_OUTPUT_FORMAT="${SQLITE_OUTPUT_FORMAT:-json}" \
-  "${script_dir}/convert_sniper_sqlite.py" \
+  "${SCRIPT_DIR}/convert_sniper_sqlite.py" \
     "${output_subdir_abs}/sim.stats.sqlite3" \
     --format "${SQLITE_OUTPUT_FORMAT:-json}" \
     > "${output_subdir_abs}/sim.stats.${SQLITE_OUTPUT_FORMAT:-json}" 2>&1 || {
