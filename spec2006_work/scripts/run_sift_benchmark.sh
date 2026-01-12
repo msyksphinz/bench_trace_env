@@ -58,18 +58,18 @@ rm -f "$all_script_list_file"
 echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw; do
   # Escape special characters to safely execute sed command
   cmd_clean=$(printf "%s\n" "$cmd_raw" | sed "s| [0-9]*>>* *[^ ]*||g")
-   
+
   simpoint_file="${simpoint_dir_abs}/bbv_${cmd_num}.out.*.simpoints"
   weights_file="${simpoint_dir_abs}/bbv_${cmd_num}.out.*.weights"
   simpoint_files=$(ls $simpoint_file 2>/dev/null | head -1)
   weights_files=$(ls $weights_file 2>/dev/null | head -1)
-  
-  
+
+
   if [ -z "$simpoint_files" ] || [ -z "$weights_files" ]; then
     echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] No SimPoint files found, skipping"
     continue
   fi
-  
+
   echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] Found SimPoint files"
   sift_subcmd_dir="${sift_dir_abs}/subcmd_${cmd_num}"
   mkdir -p "$sift_subcmd_dir"
@@ -87,15 +87,15 @@ echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw
     response_file="${output_base}_response.app0.th0.sift"
     mkdir -p "$(dirname "$response_file")"
     touch "$response_file"
-    
+
     cmd_suffix=$(echo "$cmd_clean" | sed "s|^[^ ]* ||")
     cmd_suffix_noL=$(echo "$cmd_suffix" | sed "s|^-L [^ ]* ||")
     cmd_suffix_noL=$(echo "$cmd_suffix_noL" | sed "s|^ *||")
-    
+
     sniper_vm_ld_path="$SNIPER_SIM_LD_PATH"
     original_ld_path="$LD_LIBRARY_PATH"
     sniper_script_ld_path="$original_ld_path"
-    
+
     # SimPoint line only contains SimPointIndex, so
     # BBV interval length (number of instructions) is obtained from .simpoints filename.
     # Example: bbv_1.out.100000000.simpoints -> interval = 100000000
@@ -108,7 +108,7 @@ echo "${subcmds}" | nl -nln -w1 -s$'\t'| while IFS=$'\t' read -r cmd_num cmd_raw
     # Create individual execution directory for each SimPoint
     simpoint_run_dir="${sift_subcmd_dir}/run_dir_simpoint_${simpoint}"
     mkdir -p "$simpoint_run_dir"
-    
+
     # Generate script file for each SimPoint
     script_file="${sift_subcmd_dir}/run_sift_simpoint_${simpoint}.sh"
     cat > "$script_file" << EOF
@@ -145,7 +145,7 @@ SNIPER_SCRIPT_LD_LIBRARY_PATH="${sniper_script_ld_path}" \\
 LD_LIBRARY_PATH="${sniper_vm_ld_path}" \\
 LD_PRELOAD= \\
 QEMU_CPU="${QEMU_CPU_OPTIONS}" \\
-"${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=on,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_suffix_noL} \\
+"${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=off,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_suffix_noL} \\
 > "${output_base}.log" 2>&1 && \\
 echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] Completed SimPoint ${simpoint}" || \\
 echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] Failed SimPoint ${simpoint}"
@@ -153,7 +153,7 @@ EOF
     chmod +x "$script_file"
     echo "$script_file" >> "$all_script_list_file"
   done
-  
+
   echo "[${BENCHMARK} SIFT ${cmd_num}/${NUM_SUBCMDS}] All SimPoints processed"
 done
 
@@ -171,5 +171,3 @@ if [ -f "$all_script_list_file" ] && [ -s "$all_script_list_file" ]; then
 fi
 
 echo "=== Completed SIFT generation for ${benchmark} ==="
-
-

@@ -147,10 +147,10 @@ SNIPER_SCRIPT_LD_LIBRARY_PATH="${sniper_script_ld_path}" \
 LD_LIBRARY_PATH="${sniper_vm_ld_path}" \
 LD_PRELOAD= \
 QEMU_CPU="${QEMU_CPU_OPTIONS}" \
-"${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=on,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_suffix_noL} \
+"${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=off,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_suffix_noL} \
 > "${output_base}.log" 2>&1
 
-if [ ! -f "${output_base}.app0.th0.sift" ]; then
+if [ ! -f "${output_base}.sift" ]; then
   echo "Error: SIFT file generation failed. Check log: ${output_base}.log"
   exit 1
 fi
@@ -158,12 +158,12 @@ fi
 echo "[${benchmark} SIFT subcmd=${subcmd} simpoint=${simpoint}] SIFT generation completed"
 
 # Run Sniper
-sift_file="${output_base}.app0.th0.sift"
+sift_file="${output_base}.sift"
 simulation_output_dir="${SIMULATION_DIR}/${benchmark}"
 sniper_subcmd_dir="${simulation_output_dir}/subcmd_${subcmd}"
 mkdir -p "${sniper_subcmd_dir}"
 
-sift_basename="simpoint_${simpoint}.app0.th0"
+sift_basename="simpoint_${simpoint}"
 output_subdir="${sniper_subcmd_dir}/${sift_basename}"
 
 echo "[${benchmark} Sniper subcmd=${subcmd} simpoint=${simpoint}] Running simulation..."
@@ -220,8 +220,7 @@ fi
 
 # Clean up SIFT files to save disk space
 echo "[${benchmark} Cleanup subcmd=${subcmd} simpoint=${simpoint}] Removing SIFT files..."
-rm -f "${output_base}.app0.th0.sift" "${output_base}_response.app0.th0.sift" "${output_base}.log"
+rm -f "${output_base}.sift" "${output_base}_response.app0.th0.sift" "${output_base}.log"
 rm -rf "${simpoint_run_dir}"
 
 echo "[${benchmark} Completed subcmd=${subcmd} simpoint=${simpoint}] All done"
-

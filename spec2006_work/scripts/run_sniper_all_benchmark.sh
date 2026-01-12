@@ -28,13 +28,13 @@ if [ ! -d "${sift_output_dir}" ]; then
 fi
 
 # Find all SIFT files in the benchmark directory and convert to absolute paths
-# Look for files matching pattern: subcmd_*/simpoint_*.app0.th0.sift
+# Look for files matching pattern: subcmd_*/simpoint_*.sift
 if command -v realpath > /dev/null 2>&1; then
-    echo find "${sift_output_dir}" -type f -name "*.app0.th0.sift" # | grep -v "_response" | while read -r f; do realpath "$f"; done | sort
-  sift_files=$(find "${sift_output_dir}" -type f -name "*.app0.th0.sift" | grep -v "_response" | while read -r f; do realpath "$f"; done | sort)
+    echo find "${sift_output_dir}" -type f -name "*.sift" # | grep -v "_response" | while read -r f; do realpath "$f"; done | sort
+  sift_files=$(find "${sift_output_dir}" -type f -name "*.sift" | grep -v "_response" | while read -r f; do realpath "$f"; done | sort)
 else
   # Fallback: use find with absolute path (results are already absolute if starting dir is absolute)
-  sift_files=$(find "${sift_output_dir}" -type f -name "*.app0.th0.sift" | grep -v "_response" | sort)
+  sift_files=$(find "${sift_output_dir}" -type f -name "*.sift" | grep -v "_response" | sort)
 fi
 
 if [ -z "${sift_files}" ]; then
@@ -90,7 +90,7 @@ while IFS= read -r sift_file; do
     continue
   fi
 
-  # Extract simpoint number from filename (e.g., simpoint_17.app0.th0.sift -> 17)
+  # Extract simpoint number from filename (e.g., simpoint_17.sift -> 17)
   sift_basename=$(basename "${sift_file}" .sift)
   if echo "${sift_basename}" | grep -oP 'simpoint_\K[0-9]+' > /dev/null 2>&1; then
     simpoint=$(echo "${sift_basename}" | grep -oP 'simpoint_\K[0-9]+')
@@ -110,7 +110,7 @@ while IFS= read -r sift_file; do
   output_subdir="${sniper_subcmd_dir}/${sift_basename}"
 
   # Generate script file
-  script_file="${sniper_subcmd_dir}/run_sniper_simpoint_${simpoint}.app0.th0.sh"
+  script_file="${sniper_subcmd_dir}/run_sniper_simpoint_${simpoint}.sh"
 
   # Calculate roi-icount parameters based on SIMPOINT_INTERVAL
   WARMUP_LENGTH=$((SIMPOINT_INTERVAL * 20 / 100))
