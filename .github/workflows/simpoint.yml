@@ -147,8 +147,8 @@ jobs:
             echo \"=== Using \${NPROC} parallel jobs (half of available CPUs) ===\"
 
             # Process each SimPoint in parallel
-            # Ensure SIMPOINT_INTERVAL is set (should match Makefile: 10000000 for 1/10 of original 100000000)
-            export SIMPOINT_INTERVAL=10000000
+            # Ensure SIMPOINT_INTERVAL is set (should match Makefile: 1000000 for 1/100 of original 100000000)
+            export SIMPOINT_INTERVAL=1000000
             echo \"=== Using SIMPOINT_INTERVAL=\${SIMPOINT_INTERVAL} (1/10 of original) ===\"
 
             # Create temporary file to track failures
