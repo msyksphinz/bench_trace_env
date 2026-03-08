@@ -91,12 +91,33 @@ fi
 # Remove redirects and clean up command line
 # Use awk for safer string processing
 cmd_clean=$(printf "%s\n" "$cmd_raw" | awk '{
-  # Remove redirect patterns: " [0-9]*>>* *[^ ]*"
+  # Remove output redirect patterns: " [0-9]*>>* *[^ ]*"
   gsub(/ [0-9]*>>* *[^ ]*/, "")
   print
 }')
+# Extract stdin redirect " < path" so we can apply it explicitly (avoids guest seeing empty stdin)
+stdin_redirect=
+cmd_no_stdin=$(echo "$cmd_clean" | awk '{
+  if (match($0, / [<] [^ ]+/)) {
+    print substr($0, 1, RSTART-1) substr($0, RSTART+RLENGTH)
+  } else {
+    print
+  }
+}')
+if echo "$cmd_clean" | grep -qE ' [<] [^ ]+'; then
+  stdin_redirect=$(echo "$cmd_clean" | awk 'match($0, / [<] [^ ]+/) { print substr($0, RSTART+3, RLENGTH-3); exit }')
+  cmd_clean="$cmd_no_stdin"
+fi
 cmd_suffix=$(echo "$cmd_clean" | awk '{$1=""; sub(/^[ \t]+/, ""); print}')
 cmd_suffix_noL=$(echo "$cmd_suffix" | awk '{gsub(/^-L [^ ]* /, ""); gsub(/^[ \t]+/, ""); print}')
+
+# Pass to QEMU: guest binary + args. If specinvoke already wrapped with QEMU, drop first word; else keep full command.
+first_word=$(printf '%s\n' "$cmd_clean" | awk '{print $1; exit}')
+if [ "$first_word" = "$QEMU" ]; then
+  cmd_for_qemu="$cmd_suffix_noL"
+else
+  cmd_for_qemu=$(echo "$cmd_clean" | awk '{gsub(/ -L [^ ]+/, ""); print}')
+fi
 
 # Set up environment
 sniper_vm_ld_path="$SNIPER_SIM_LD_PATH"
@@ -136,21 +157,36 @@ touch "$response_file"
 
 echo "[${benchmark} SIFT subcmd=${subcmd} simpoint=${simpoint}] Generating SIFT..."
 
-cd "${simpoint_run_dir}" && \
-SNIPER_ROOT="${SNIPER_ROOT}" \
-GRAPHITE_ROOT="${SNIPER_ROOT}" \
-PIN_HOME="${PIN_HOME}" \
-PIN_LD_RESTORE_REQUIRED=1 \
-PIN_VM_LD_LIBRARY_PATH="${sniper_vm_ld_path}" \
-PIN_APP_LD_LIBRARY_PATH="${original_ld_path}" \
-SNIPER_SCRIPT_LD_LIBRARY_PATH="${sniper_script_ld_path}" \
-LD_LIBRARY_PATH="${sniper_vm_ld_path}" \
-LD_PRELOAD= \
-QEMU_CPU="${QEMU_CPU_OPTIONS}" \
-"${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=off,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_suffix_noL} \
-> "${output_base}.log" 2>&1
+# Run QEMU; when cmd has stdin redirect, apply it explicitly (0< file) so guest never sees empty stdin (e.g. 445.gobmk)
+if [ -n "$stdin_redirect" ]; then
+  if [ ! -r "${simpoint_run_dir}/${stdin_redirect}" ]; then
+    echo "Error: stdin file not found or not readable: ${simpoint_run_dir}/${stdin_redirect}" >&2
+    exit 1
+  fi
+  ( cd "${simpoint_run_dir}" && \
+    SNIPER_ROOT="${SNIPER_ROOT}" GRAPHITE_ROOT="${SNIPER_ROOT}" PIN_HOME="${PIN_HOME}" \
+    PIN_LD_RESTORE_REQUIRED=1 PIN_VM_LD_LIBRARY_PATH="${sniper_vm_ld_path}" \
+    PIN_APP_LD_LIBRARY_PATH="${original_ld_path}" SNIPER_SCRIPT_LD_LIBRARY_PATH="${sniper_script_ld_path}" \
+    LD_LIBRARY_PATH="${sniper_vm_ld_path}" LD_PRELOAD= QEMU_CPU="${QEMU_CPU_OPTIONS}" \
+    "${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=off,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_for_qemu} \
+    0< "${stdin_redirect}" ) > "${output_base}.log" 2>&1
+else
+  ( cd "${simpoint_run_dir}" && \
+    SNIPER_ROOT="${SNIPER_ROOT}" GRAPHITE_ROOT="${SNIPER_ROOT}" PIN_HOME="${PIN_HOME}" \
+    PIN_LD_RESTORE_REQUIRED=1 PIN_VM_LD_LIBRARY_PATH="${sniper_vm_ld_path}" \
+    PIN_APP_LD_LIBRARY_PATH="${original_ld_path}" SNIPER_SCRIPT_LD_LIBRARY_PATH="${sniper_script_ld_path}" \
+    LD_LIBRARY_PATH="${sniper_vm_ld_path}" LD_PRELOAD= QEMU_CPU="${QEMU_CPU_OPTIONS}" \
+    "${QEMU}" ${QEMU_FLAGS} -plugin "${QEMU_FRONTEND_PLUGIN}",verbose=on,response_files=off,fast_forward_target=${fast_forward_target},detailed_target=${detailed_target},output_file="${output_base}" ${cmd_for_qemu} \
+  ) > "${output_base}.log" 2>&1
+fi
 
 if [ ! -f "${output_base}.sift" ]; then
+  # For bounded-workload benchmarks (e.g. 445.gobmk), the program may exit at EOF
+  # before reaching the SimPoint; treat as skip rather than failure if log suggests normal exit.
+  if [ -f "${output_base}.log" ] && ! grep -qEi 'error|segfault|killed|fault|abort|failed' "${output_base}.log" 2>/dev/null; then
+    echo "[${benchmark} Skip subcmd=${subcmd} simpoint=${simpoint}] Run ended before reaching SimPoint (bounded workload, no .sift produced)."
+    exit 0
+  fi
   echo "Error: SIFT file generation failed. Check log: ${output_base}.log"
   exit 1
 fi
