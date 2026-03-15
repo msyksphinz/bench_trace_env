@@ -18,11 +18,11 @@ BBV_DIR := bbv_results
 SIMPOINT_DIR := simpoint_results
 SIFT_DIR := sift_results
 SIMULATION_DIR := $(CURDIR)/sniper_results
-# SIMPOINT_INTERVAL := 100000000
-SIMPOINT_INTERVAL := 1000000
+-include $(CURDIR)/simpoint_config.mk
+SIMPOINT_INTERVAL ?= 1000000
+SIMPOINT_K ?= 30
 SIMPOINT_SRC_DIR := $(abspath ../SimPoint)
 SIMPOINT := $(SIMPOINT_SRC_DIR)/bin/simpoint
-SIMPOINT_K := 30
 SIMPOINT_GIT_URL := https://github.com/hanhwi/SimPoint.git
 
 PATH := $(QEMU_BUILD_DIR):$(PATH)
@@ -73,6 +73,14 @@ BUILD_BENCH_TARGETS := $(addprefix build_,$(bench_lists))
 # Default target
 .DEFAULT_GOAL := help
 
+# Emit SimPoint config for scripts (single source: simpoint_config.mk)
+print-simpoint-config:
+	@echo "SIMPOINT_INTERVAL=$(SIMPOINT_INTERVAL)"; echo "SIMPOINT_K=$(SIMPOINT_K)"
+print-simpoint-interval:
+	@echo "$(SIMPOINT_INTERVAL)"
+print-simpoint-k:
+	@echo "$(SIMPOINT_K)"
+
 help:
 	@echo "SPEC CPU2006 Benchmark Makefile"
 	@echo ""
@@ -87,7 +95,8 @@ help:
 	@echo "  run_sift       - Generate SIFT traces based on SimPoint results"
 	@echo "  run_sniper     - Run Sniper simulations using SIFT traces"
 	@echo "  estimate_ipc   - Estimate overall IPC using SimPoint weights"
-	@echo "  report         - Show summary of benchmark results"
+	@echo "  report_ipc     - Show composite SPEC/GHz from ipc_summary.csv"
+	@echo "  ci-pipeline    - Run full CI pipeline locally (same as GitHub Actions; requires CDROM_DIR)"
 	@echo "  clean          - Clean build and result directories"
 	@echo "  clean-results  - Clean only result directories"
 	@echo "  clean-bbv      - Clean only BBV results"
@@ -104,6 +113,8 @@ help:
 	@echo "  run_sniper_<benchmark>  - Run Sniper simulation for a specific benchmark"
 	@echo "  estimate_ipc_<benchmark>- Estimate overall IPC and SPEC/GHz for a specific benchmark"
 	@echo "  report_ipc              - Show composite SPEC/GHz (geometric mean) from ipc_summary.csv"
+	@echo ""
+	@echo "SimPoint parameters (edit simpoint_config.mk): SIMPOINT_INTERVAL, SIMPOINT_K"
 	@echo ""
 	@echo "Output directories:"
 	@echo "  results/<benchmark>/        - Output files for each subcommand"
@@ -123,6 +134,7 @@ help:
 	@echo "  make run_sift_429.mcf_1_17             # Generate SIFT, run Sniper, cleanup for 429.mcf subcmd=1 simpoint=17"
 	@echo "  make run_sniper_429.mcf                # Run Sniper simulation for 429.mcf"
 	@echo "  make estimate_ipc_429.mcf              # Estimate overall IPC for 429.mcf"
+	@echo "  make ci-pipeline                       # Run full CI pipeline (needs CDROM_DIR; same as GitHub Actions)"
 	@echo "  make -j4 run_429.mcf run_401.bzip2     # Run 2 benchmarks in parallel"
 	@echo "  make -j4 run_bbv_429.mcf run_bbv_401.bzip2   # Run 2 with BBV in parallel"
 	@echo "  make -j4 run_simpoint_429.mcf run_simpoint_401.bzip2  # Run SimPoint in parallel"
@@ -368,6 +380,11 @@ $(RUN_SNIPER_TARGETS):
 	SIMPOINT_INTERVAL=$(SIMPOINT_INTERVAL) \
 	./scripts/run_sniper_all_benchmark.sh $(benchmark)
 
+# Full CI pipeline (build-qemu, prepare, build, run_bbv, run_simpoint, build_sniper, SIFT+Sniper per SimPoint, estimate_ipc)
+# Run locally: make ci-pipeline [CDROM_DIR=/path/to/spec2006_cdrom] [NPROC=4]
+ci-pipeline:
+	@CDROM_DIR="$${CDROM_DIR:-$(CDROM_DIR)}" ./scripts/ci_pipeline.sh
+
 # Estimate overall IPC and SPEC/GHz using SimPoint weights
 estimate_ipc: $(ESTIMATE_IPC_TARGETS)
 
@@ -420,4 +437,4 @@ clean-sift:
 clean-simulation:
 	rm -rf $(SIMULATION_DIR)
 
-.PHONY: help extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper estimate_ipc report_ipc clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_%
+.PHONY: help print-simpoint-config print-simpoint-interval print-simpoint-k extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper estimate_ipc report_ipc ci-pipeline clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_%

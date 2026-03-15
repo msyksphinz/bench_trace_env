@@ -1,3 +1,8 @@
+# SimPoint pipeline: build QEMU, run BBV/SimPoint, SIFT+Sniper per SimPoint, estimate IPC.
+# To run the same pipeline locally: from spec2006_work run:
+#   make ci-pipeline CDROM_DIR=/path/to/spec2006_cdrom
+# or: CDROM_DIR=/path/to/spec2006_cdrom ./scripts/ci_pipeline.sh
+
 name: SimPoint Analysis
 
 on:
@@ -7,194 +12,40 @@ on:
       - main
       - master
   schedule:
-    # Run regression test once per week at 2:00 AM JST Monday (17:00 UTC Sunday)
-    - cron: '0 17 * * 0'
+    - cron: '0 17 * * 0'  # Weekly Sunday 17:00 UTC (Mon 02:00 JST)
+
+env:
+  CDROM_DIR: /home/kimura/spec_bechmarks/spec2006_cdrom
 
 jobs:
   build-docker:
     runs-on: self-hosted
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        set-safe-directory: false
-
-    - name: Build Docker image
-      run: |
-        # Build Docker image from repository Dockerfile on the runner server
-        docker build -t simpoint-runner:latest \
-          --build-arg RISCV_ARG=/riscv-linux \
-          -f Dockerfile .
+      - uses: actions/checkout@v4
+        with:
+          set-safe-directory: false
+      - name: Build Docker image
+        run: |
+          docker build -t simpoint-runner:latest \
+            --build-arg RISCV_ARG=/riscv-linux \
+            -f Dockerfile .
 
   simpoint:
     runs-on: self-hosted
     needs: build-docker
     timeout-minutes: 10080  # 1 week
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-
-    - name: Get uid/gid
-      run: |
-        echo "UID=$(id -u)" >> $GITHUB_ENV
-        echo "GID=$(id -g)" >> $GITHUB_ENV
-
-    - name: Run BBV and SimPoint analysis
-      run: |
-        docker run --rm --user "${UID}:${GID}" \
-          -v ${{ github.workspace }}:/workspace \
-          -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
-          -v /home/kimura/sniper_tools:/home/kimura/sniper_tools:ro \
-          -w /workspace/spec2006_work \
-          -e RISCV=/riscv-linux \
-          -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-          simpoint-runner:latest bash -c "
-            # Get number of CPUs available in the container (use half)
-            NPROC=\$((\$(nproc) / 2))
-            echo \"Using \${NPROC} parallel jobs (half of available CPUs)\"
-            # Run the full pipeline up to SimPoint analysis
-            make -C ../ build-qemu && \
-            make prepare CDROM_DIR=/home/kimura/spec_bechmarks/spec2006_cdrom && \
-            make build -j\${NPROC} && \
-            make run_bbv -j\${NPROC} && \
-            make build_simpoint && \
-            make run_simpoint -j\${NPROC} && \
-            make build_sniper && \
-            make clean-bbv
-          "
-
-    - name: Run SIFT generation, Sniper simulation, and cleanup for each SimPoint
-      run: |
-        docker run --rm --user "${UID}:${GID}" \
-          -v ${{ github.workspace }}:/workspace \
-          -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
-          -v /home/kimura/sniper_tools:/home/kimura/sniper_tools:ro \
-          -w /workspace/spec2006_work \
-          -e RISCV=/riscv-linux \
-          -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-          simpoint-runner:latest bash -c "
-            # Enumerate all SimPoints and run SIFT generation, Sniper simulation, and cleanup sequentially
-            SIMPOINT_DIR=\$(pwd)/simpoint_results
-            SPEC_ROOT=\$(pwd)/spec2006_installed
-            SPECINVOKE=\${SPEC_ROOT}/bin/specinvoke
-
-            # Get list of benchmarks
-            BENCHMARKS=\"400.perlbench 401.bzip2 403.gcc 429.mcf 445.gobmk 456.hmmer 458.sjeng 462.libquantum 464.h264ref 471.omnetpp 473.astar 483.xalancbmk\"
-            # BENCHMARKS=\"403.gcc\"
-
-            # Create temporary file to store all SimPoint tasks
-            TASK_FILE=\$(mktemp)
-            trap \"rm -f \${TASK_FILE}\" EXIT
-
-            # Enumerate all SimPoints
-            for benchmark in \${BENCHMARKS}; do
-              simpoint_dir=\"\${SIMPOINT_DIR}/\${benchmark}\"
-              if [ ! -d \"\${simpoint_dir}\" ]; then
-                echo \"[SKIP] SimPoint directory not found for \${benchmark}\"
-                continue
-              fi
-
-              run_dir=\"\${SPEC_ROOT}/benchspec/CPU2006/\${benchmark}/run/run_base_ref_gcc.0000\"
-              if [ ! -d \"\${run_dir}\" ]; then
-                echo \"[SKIP] Run directory not found for \${benchmark}\"
-                continue
-              fi
-
-              # Get subcommands
-              subcmds=\$(cd \"\${run_dir}\" && \"\${SPECINVOKE}\" -n 2>&1 | grep -v \"^#\" | grep -v \"^timer\" | grep -v \"^\$\")
-              num_subcmds=\$(echo \"\${subcmds}\" | wc -l)
-
-              echo \"=== Enumerating SimPoints for \${benchmark} (\${num_subcmds} subcommands) ===\"
-
-              # Process each subcommand with line numbers
-              echo \"\${subcmds}\" | nl -nln -w1 -s\$'\\t' | while IFS=\$'\\t' read -r cmd_num cmd_raw; do
-                # Find SimPoint files for this subcommand
-                simpoint_file=\"\${simpoint_dir}/bbv_\${cmd_num}.out.*.simpoints\"
-                weights_file=\"\${simpoint_dir}/bbv_\${cmd_num}.out.*.weights\"
-                simpoint_files=\$(ls \${simpoint_file} 2>/dev/null | head -1)
-                weights_files=\$(ls \${weights_file} 2>/dev/null | head -1)
-
-                if [ -n \"\${simpoint_files}\" ] && [ -n \"\${weights_files}\" ]; then
-                  # Process each SimPoint and add to task list
-                  paste -d \" \" \"\${simpoint_files}\" \"\${weights_files}\" | while IFS=\" \" read -r simpoint dummy1 weight dummy2; do
-                    # Skip empty lines or comments
-                    if [ -n \"\${simpoint}\" ] && [[ ! \"\${simpoint}\" =~ ^# ]]; then
-                      echo \"\${benchmark} \${cmd_num} \${simpoint} \${weight}\" >> \${TASK_FILE}
-                    fi
-                  done
-                fi
-              done
-            done
-
-            # Count total tasks
-            total_tasks=\$(wc -l < \${TASK_FILE})
-            echo \"=== Found \${total_tasks} SimPoints to process ===\"
-
-            # Get number of CPUs available (use half for parallel processing)
-            NPROC=\$((\$(nproc) / 2))
-            echo \"=== Using \${NPROC} parallel jobs (half of available CPUs) ===\"
-
-            # Process each SimPoint in parallel
-            # Ensure SIMPOINT_INTERVAL is set (should match Makefile: 1000000 for 1/100 of original 100000000)
-            export SIMPOINT_INTERVAL=1000000
-            echo \"=== Using SIMPOINT_INTERVAL=\${SIMPOINT_INTERVAL} (1/10 of original) ===\"
-
-            # Create temporary file to track failures
-            FAILED_FILE=\$(mktemp)
-            trap \"rm -f \${TASK_FILE} \${FAILED_FILE}\" EXIT
-
-            # Define function to process a single SimPoint task
-            process_task() {
-              local line=\"\$1\"
-              IFS=\" \" read -r benchmark subcmd simpoint weight <<< \"\${line}\"
-
-              echo \"[PROCESS] \${benchmark} subcmd=\${subcmd} simpoint=\${simpoint} (weight=\${weight})\"
-
-              # Run SIFT generation, Sniper simulation, and cleanup
-              if SIMPOINT_INTERVAL=\${SIMPOINT_INTERVAL} make run_sift_\${benchmark}_\${subcmd}_\${simpoint}; then
-                echo \"[SUCCESS] \${benchmark} subcmd=\${subcmd} simpoint=\${simpoint}\"
-                return 0
-              else
-                echo \"[FAILED] \${benchmark} subcmd=\${subcmd} simpoint=\${simpoint}\"
-                echo \"\${benchmark} \${subcmd} \${simpoint}\" >> \${FAILED_FILE}
-                return 1
-              fi
-            }
-
-            # Export function and variables for xargs
-            export -f process_task
-            export SIMPOINT_INTERVAL
-            export FAILED_FILE
-
-            # Process tasks in parallel using xargs
-            cat \${TASK_FILE} | xargs -P \${NPROC} -I {} bash -c 'process_task \"{}\"'
-
-            # Count failures
-            failed=\$(wc -l < \${FAILED_FILE} 2>/dev/null || echo 0)
-            processed=\${total_tasks}
-
-            echo \"=== Completed: processed \${processed} SimPoints, \${failed} failed ===\"
-            if [ \${failed} -gt 0 ]; then
-              echo \"\"
-              echo \"=== List of failed SimPoints (benchmark subcmd simpoint) ===\"
-              cat \${FAILED_FILE}
-              echo \"\"
-              echo \"=== End of failed list ===\"
-              exit 1
-            fi
-          "
-
-    - name: Estimate overall IPC
-      run: |
-        docker run --rm --user "${UID}:${GID}" \
-          -v ${{ github.workspace }}:/workspace \
-          -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
-          -v /home/kimura/sniper_tools:/home/kimura/sniper_tools:ro \
-          -w /workspace/spec2006_work \
-          -e RISCV=/riscv-linux \
-          -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-          simpoint-runner:latest bash -c "
-            make estimate_ipc
-          "
+      - name: Run CI pipeline
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v ${{ github.workspace }}:/workspace \
+            -v /home/kimura/spec_bechmarks:/home/kimura/spec_bechmarks:ro \
+            -v /home/kimura/sniper_tools:/home/kimura/sniper_tools:ro \
+            -w /workspace/spec2006_work \
+            -e CDROM_DIR="${{ env.CDROM_DIR }}" \
+            -e RISCV=/riscv-linux \
+            -e PATH=/workspace/qemu-9.2.4/build:/riscv-linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            simpoint-runner:latest \
+            ./scripts/ci_pipeline.sh
