@@ -62,7 +62,9 @@ export SIMPOINT_INTERVAL
 phase1() {
   echo "=== Phase 1: build-qemu, prepare, build, run_bbv, run_simpoint, build_sniper, clean-bbv ==="
   if [[ -z "${CDROM_DIR:-}" ]]; then
-    echo "Error: CDROM_DIR is required for phase 1. Set it to the path of extracted SPEC CPU2006 (e.g. spec2006_cdrom)." >&2
+    echo "Error: CDROM_DIR is required for phase 1. Set it to the path of extracted SPEC CPU2006, e.g.:" >&2
+    echo "  CDROM_DIR=/path/to/spec2006_cdrom $0" >&2
+    echo "  or run only phase 2/3: $0 --phase 2   or   $0 --phase 3" >&2
     exit 1
   fi
   make -C "$REPO_ROOT" build-qemu
@@ -101,7 +103,7 @@ phase2() {
     echo "=== Enumerating SimPoints for $benchmark ==="
     echo "$subcmds" | nl -nln -w1 -s$'\t' | while IFS=$'\t' read -r cmd_num cmd_raw; do
       simpoint_file="$simpoint_dir/bbv_${cmd_num}.out."*.simpoints
-      weights_file="$simpoint_dir/bbv_${cmd_num}.out."*.weights"
+      weights_file="$simpoint_dir/bbv_${cmd_num}.out."*.weights
       sf="$(ls $simpoint_file 2>/dev/null | head -1)"
       wf="$(ls $weights_file 2>/dev/null | head -1)"
       if [[ -n "${sf:-}" && -n "${wf:-}" ]]; then
@@ -115,7 +117,7 @@ phase2() {
   done
 
   total_tasks="$(wc -l < "$TASK_FILE" 2>/dev/null || echo 0)"
-  echo "=== Found $total_tasks SimPoints to process (parallelism: $NPROC) ==="
+  echo "=== Found $total_tasks SimPoints to process, parallelism: $NPROC ==="
 
   FAILED_FILE="$(mktemp)"
   trap "rm -f $TASK_FILE $FAILED_FILE" EXIT
@@ -123,7 +125,7 @@ phase2() {
   process_task() {
     local line="$1"
     IFS=' ' read -r benchmark subcmd simpoint weight <<< "$line"
-    echo "[PROCESS] $benchmark subcmd=$subcmd simpoint=$simpoint (weight=$weight)"
+    echo "[PROCESS] $benchmark subcmd=$subcmd simpoint=$simpoint weight=$weight"
     if SIMPOINT_INTERVAL="$SIMPOINT_INTERVAL" make run_sift_${benchmark}_${subcmd}_${simpoint}; then
       echo "[SUCCESS] $benchmark subcmd=$subcmd simpoint=$simpoint"
       return 0
@@ -143,7 +145,7 @@ phase2() {
   echo "=== Phase 2 done: processed $total_tasks SimPoints, $failed failed ==="
   if [[ "$failed" -gt 0 ]]; then
     echo ""
-    echo "=== Failed SimPoints (benchmark subcmd simpoint) ==="
+    echo "=== Failed SimPoints: benchmark subcmd simpoint ==="
     cat "$FAILED_FILE"
     exit 1
   fi
