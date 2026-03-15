@@ -377,7 +377,7 @@ $(ESTIMATE_IPC_TARGETS):
 	SIMULATION_DIR=$(SIMULATION_DIR) \
 	SPEC_ROOT=$(SPEC_ROOT) \
 	FREQ_GHZ=$${FREQ_GHZ:-1} \
-	./scripts/estimate_ipc.sh $(benchmark)
+	python3 scripts/estimate_ipc.py $(benchmark)
 
 # Composite SPEC/GHz (geometric mean) from sniper_results/ipc_summary.csv
 report_ipc:
