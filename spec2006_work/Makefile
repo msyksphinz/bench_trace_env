@@ -102,7 +102,8 @@ help:
 	@echo "  run_sift_<benchmark>    - Generate SIFT traces for a specific benchmark"
 	@echo "  run_sift_<benchmark>_<subcmd>_<simpoint> - Generate SIFT, run Sniper, and cleanup for a specific SimPoint"
 	@echo "  run_sniper_<benchmark>  - Run Sniper simulation for a specific benchmark"
-	@echo "  estimate_ipc_<benchmark>- Estimate overall IPC for a specific benchmark"
+	@echo "  estimate_ipc_<benchmark>- Estimate overall IPC and SPEC/GHz for a specific benchmark"
+	@echo "  report_ipc              - Show composite SPEC/GHz (geometric mean) from ipc_summary.csv"
 	@echo ""
 	@echo "Output directories:"
 	@echo "  results/<benchmark>/        - Output files for each subcommand"
@@ -367,14 +368,28 @@ $(RUN_SNIPER_TARGETS):
 	SIMPOINT_INTERVAL=$(SIMPOINT_INTERVAL) \
 	./scripts/run_sniper_all_benchmark.sh $(benchmark)
 
-# Estimate overall IPC using SimPoint weights
+# Estimate overall IPC and SPEC/GHz using SimPoint weights
 estimate_ipc: $(ESTIMATE_IPC_TARGETS)
 
 $(ESTIMATE_IPC_TARGETS): benchmark=$(subst estimate_ipc_,,$@)
 $(ESTIMATE_IPC_TARGETS):
 	@SIMPOINT_DIR=$(SIMPOINT_DIR) \
 	SIMULATION_DIR=$(SIMULATION_DIR) \
+	SPEC_ROOT=$(SPEC_ROOT) \
+	FREQ_GHZ=$${FREQ_GHZ:-1} \
 	./scripts/estimate_ipc.sh $(benchmark)
+
+# Composite SPEC/GHz (geometric mean) from sniper_results/ipc_summary.csv
+report_ipc:
+	@SUMMARY="$(SIMULATION_DIR)/ipc_summary.csv"; \
+	if [ ! -f "$$SUMMARY" ]; then \
+	  echo "Error: $$SUMMARY not found. Run 'make estimate_ipc_<benchmark>' for at least one benchmark."; \
+	  exit 1; \
+	fi; \
+	echo "=== IPC summary (from $$SUMMARY) ==="; \
+	awk -F, 'NR>1 && NF>=2 {v=$NF+0; if(v==v){n++; g=(v>0)?(g?g*v:v):g; s+=v}} END {if(n>0){gm=(g>0)?exp(log(g)/n):0; print "Benchmarks: " n; print "Arithmetic mean SPEC/GHz: " (s/n); print "Geometric mean SPEC/GHz (SPECint-style): " gm}}' "$$SUMMARY"; \
+	echo ""; \
+	cat "$$SUMMARY"
 
 # Clean targets
 clean: clean-results
@@ -405,4 +420,4 @@ clean-sift:
 clean-simulation:
 	rm -rf $(SIMULATION_DIR)
 
-.PHONY: help extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper estimate_ipc clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_%
+.PHONY: help extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper estimate_ipc report_ipc clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_%

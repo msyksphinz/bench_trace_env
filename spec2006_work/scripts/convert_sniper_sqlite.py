@@ -212,16 +212,16 @@ def main():
                 json.dump(data, f, indent=2, ensure_ascii=False)
             else:  # yaml
                 yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        
-        print(f"Successfully converted {sqlite_path} to {output_path}")
-        print(f"  Format: {args.format}")
-        print(f"  Prefixes: {len(data.get('prefixes', []))}")
+
+        print(f"Successfully converted {sqlite_path} to {output_path}", file=sys.stderr)
+        print(f"  Format: {args.format}", file=sys.stderr)
+        print(f"  Prefixes: {len(data.get('prefixes', []))}", file=sys.stderr)
         for pname in data.get('prefixes', []):
             n = len(data.get('metrics', {}).get(pname, {}))
-            print(f"    - {pname}: {n} metrics")
+            print(f"    - {pname}: {n} metrics", file=sys.stderr)
         if args.raw and 'tables' in data:
             for table_name, table_info in data['tables'].items():
-                print(f"  Raw table: {table_name}: {table_info['row_count']} rows")
+                print(f"  Raw table: {table_name}: {table_info['row_count']} rows", file=sys.stderr)
     except Exception as e:
         print(f"Error writing output file: {e}", file=sys.stderr)
         sys.exit(1)
