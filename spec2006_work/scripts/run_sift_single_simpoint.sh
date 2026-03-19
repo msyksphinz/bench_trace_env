@@ -254,9 +254,5 @@ if [ -f "${output_subdir_abs}/sim.stats.sqlite3" ]; then
   }
 fi
 
-# Clean up SIFT files to save disk space
-echo "[${benchmark} Cleanup subcmd=${subcmd} simpoint=${simpoint}] Removing SIFT files..."
-rm -f "${output_base}.sift" "${output_base}_response.app0.th0.sift" "${output_base}.log"
-rm -rf "${simpoint_run_dir}"
-
-echo "[${benchmark} Completed subcmd=${subcmd} simpoint=${simpoint}] All done"
+# Keep SIFT files and run_dir (no cleanup)
+echo "[${benchmark} Completed subcmd=${subcmd} simpoint=${simpoint}] All done (SIFT kept: ${output_base}.sift)"
