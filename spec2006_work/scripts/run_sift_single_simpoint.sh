@@ -41,7 +41,7 @@ fi
 
 # Get subcommand (use awk instead of sed to avoid sed misparsing when subcmd or subcmds contain 's' or slashes)
 subcmds="$(cd "${run_dir}" && "${SPECINVOKE}" -n 2>&1 | grep -v "^#" | grep -v "^timer" | grep -v "^$")"
-cmd_raw=$(printf '%s\n' "${subcmds}" | awk -v n="${subcmd}" 'NR==n {print; exit}')
+cmd_raw=$(printf '%s\n' "${subcmds}" | awk -v n="${subcmd}" 'NR==n{r=$0} END{print r}')
 if [ -z "${cmd_raw}" ]; then
   echo "Error: Subcommand ${subcmd} not found for ${benchmark}"
   exit 1
@@ -50,8 +50,8 @@ fi
 # Find SimPoint files
 simpoint_file="${simpoint_output_dir}/bbv_${subcmd}.out.*.simpoints"
 weights_file="${simpoint_output_dir}/bbv_${subcmd}.out.*.weights"
-simpoint_files=$(ls $simpoint_file 2>/dev/null | head -1)
-weights_files=$(ls $weights_file 2>/dev/null | head -1)
+simpoint_files=$(ls $simpoint_file 2>/dev/null | awk 'NR==1{r=$0} END{print r}')
+weights_files=$(ls $weights_file 2>/dev/null | awk 'NR==1{r=$0} END{print r}')
 
 if [ -z "$simpoint_files" ] || [ -z "$weights_files" ]; then
   echo "Error: SimPoint files not found for subcmd ${subcmd}"

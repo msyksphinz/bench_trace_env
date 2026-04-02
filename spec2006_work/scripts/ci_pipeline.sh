@@ -104,8 +104,8 @@ phase2() {
     echo "$subcmds" | nl -nln -w1 -s$'\t' | while IFS=$'\t' read -r cmd_num cmd_raw; do
       simpoint_file="$simpoint_dir/bbv_${cmd_num}.out."*.simpoints
       weights_file="$simpoint_dir/bbv_${cmd_num}.out."*.weights
-      sf="$(ls $simpoint_file 2>/dev/null | head -1)"
-      wf="$(ls $weights_file 2>/dev/null | head -1)"
+      sf="$(ls $simpoint_file 2>/dev/null | awk 'NR==1{r=$0} END{print r}')"
+      wf="$(ls $weights_file 2>/dev/null | awk 'NR==1{r=$0} END{print r}')"
       if [[ -n "${sf:-}" && -n "${wf:-}" ]]; then
         paste -d ' ' "$sf" "$wf" | while IFS=' ' read -r simpoint _ weight _; do
           if [[ -n "${simpoint:-}" && ! "$simpoint" =~ ^# ]]; then
