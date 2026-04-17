@@ -204,9 +204,9 @@ output_subdir="${sniper_subcmd_dir}/${sift_basename}"
 
 echo "[${benchmark} Sniper subcmd=${subcmd} simpoint=${simpoint}] Running simulation..."
 
-# Calculate roi-icount parameters
-WARMUP_LENGTH=$((SIMPOINT_INTERVAL * 20 / 100))
-DETAILED_LENGTH=$((SIMPOINT_INTERVAL * 80 / 100))
+# Calculate roi-icount parameters (no warmup, all detailed)
+WARMUP_LENGTH=0
+DETAILED_LENGTH=${SIMPOINT_INTERVAL}
 ROI_ICOUNT_PARAMS="0:${WARMUP_LENGTH}:${DETAILED_LENGTH}"
 
 # Create output directory
@@ -225,6 +225,7 @@ LOG_FILE="${output_subdir_abs}/sniper.log"
   -v \
   -c "${CONFIG_BASE}" \
   --roi-script \
+  --no-cache-warming \
   -s "roi-icount:${ROI_ICOUNT_PARAMS}" \
   -c "general/magic=false" \
   -c "general/app=${benchmark}" \
@@ -244,13 +245,15 @@ fi
 echo "[${benchmark} Sniper subcmd=${subcmd} simpoint=${simpoint}] Simulation completed"
 
 # Convert SQLite to JSON/YAML if needed
+# Note: convert_sniper_sqlite.py writes the output file itself; do NOT redirect
+# stdout to the same file, as it would overwrite the JSON with the progress log.
 if [ -f "${output_subdir_abs}/sim.stats.sqlite3" ]; then
-  SQLITE_OUTPUT_FORMAT="${SQLITE_OUTPUT_FORMAT:-json}" \
+  SQLITE_OUTPUT_FORMAT="${SQLITE_OUTPUT_FORMAT:-json}"
   "${SCRIPT_DIR}/convert_sniper_sqlite.py" \
     "${output_subdir_abs}/sim.stats.sqlite3" \
-    --format "${SQLITE_OUTPUT_FORMAT:-json}" \
-    > "${output_subdir_abs}/sim.stats.${SQLITE_OUTPUT_FORMAT:-json}" 2>&1 || {
-    echo "Warning: Failed to convert SQLite to ${SQLITE_OUTPUT_FORMAT:-json}" >&2;
+    --format "${SQLITE_OUTPUT_FORMAT}" \
+    --output "${output_subdir_abs}/sim.stats.${SQLITE_OUTPUT_FORMAT}" 2>&1 || {
+    echo "Warning: Failed to convert SQLite to ${SQLITE_OUTPUT_FORMAT}" >&2;
   }
 fi
 

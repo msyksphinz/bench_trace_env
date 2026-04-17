@@ -80,24 +80,46 @@ def load_weights(path: Path) -> dict[int, float]:
     return out
 
 
-def extract_ipc_from_stats_json(path: Path) -> float | None:
-    """Compute IPC from sim.stats.json as core.instructions / (time_fs/1e6); time from barrier.global_time or thread.elapsed_time."""
+def extract_ipc_from_sqlite(path: Path, freq_ghz: float = 2.0) -> float | None:
+    """Compute IPC from sim.stats.sqlite3 using the correct formula.
+
+    Instructions = performance_model.instruction_count at roi-end
+    Elapsed      = thread.elapsed_time[roi-end] - thread.elapsed_time[roi-begin]  (femtoseconds)
+    Cycles       = elapsed_fs / clock_period_fs  where clock_period_fs = 1e12 / (freq_ghz * 1e9)
+    IPC          = instructions / cycles
+    """
     try:
-        text = path.read_text()
-    except OSError:
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect(str(path))
+        cur = conn.cursor()
+
+        def _get(prefix: str, obj: str, metric: str):
+            cur.execute(
+                '''SELECT v.value FROM "values" v
+                   JOIN names n ON v.nameid = n.nameid
+                   JOIN prefixes p ON v.prefixid = p.prefixid
+                   WHERE p.prefixname = ? AND n.objectname = ? AND n.metricname = ?''',
+                (prefix, obj, metric),
+            )
+            row = cur.fetchone()
+            return int(row[0]) if row else None
+
+        instructions = _get("roi-end", "performance_model", "instruction_count")
+        elapsed_end  = _get("roi-end",   "thread", "elapsed_time")
+        elapsed_beg  = _get("roi-begin", "thread", "elapsed_time")
+        conn.close()
+
+        if instructions is None or elapsed_end is None or elapsed_beg is None:
+            return None
+        delta_fs = elapsed_end - elapsed_beg
+        if delta_fs <= 0:
+            return None
+        # clock period in femtoseconds: 1 s / freq_hz = 1e15 fs / (freq_ghz * 1e9)
+        clock_period_fs = 1e15 / (freq_ghz * 1e9)
+        cycles = delta_fs / clock_period_fs
+        return round(instructions / cycles, 4)
+    except Exception:
         return None
-    inst_m = re.search(r'"core\.instructions"\s*:\s*(\d+)', text)
-    time_m = re.search(r'"barrier\.global_time"\s*:\s*(\d+)', text) or re.search(
-        r'"thread\.elapsed_time"\s*:\s*(\d+)', text
-    )
-    if not inst_m or not time_m:
-        return None
-    instructions = int(inst_m.group(1))
-    time_fs = int(time_m.group(1))
-    if time_fs <= 0:
-        return None
-    cycles = time_fs / 1e6
-    return round(instructions / cycles, 4)
 
 
 def extract_ipc_from_simout(path: Path) -> float | None:
@@ -114,16 +136,24 @@ def extract_ipc_from_simout(path: Path) -> float | None:
     return None
 
 
-def get_ipc(sim_dir: Path) -> float | None:
-    """Get IPC from sim.stats.json in sim_dir if present, else from sim.out."""
-    stats_json = sim_dir / "sim.stats.json"
-    if stats_json.exists():
-        ipc = extract_ipc_from_stats_json(stats_json)
-        if ipc is not None:
-            return ipc
+def get_ipc(sim_dir: Path, freq_ghz: float = 2.0) -> float | None:
+    """Get IPC from sim_dir.
+
+    Priority:
+      1. sim.out          — Sniper's own formatted output; always correct
+      2. sim.stats.sqlite3 — raw database; correct when read with extract_ipc_from_sqlite
+      3. sim.stats.json   — may be corrupted by shell redirect; used as last resort
+    """
     sim_out = sim_dir / "sim.out"
     if sim_out.exists():
-        return extract_ipc_from_simout(sim_out)
+        ipc = extract_ipc_from_simout(sim_out)
+        if ipc is not None:
+            return ipc
+    sqlite_file = sim_dir / "sim.stats.sqlite3"
+    if sqlite_file.exists():
+        ipc = extract_ipc_from_sqlite(sqlite_file, freq_ghz)
+        if ipc is not None:
+            return ipc
     return None
 
 
@@ -304,7 +334,7 @@ def main() -> None:
                 continue
 
             sim_dir = simulation_dir / f"subcmd_{subcmd}" / f"simpoint_{simpoint_idx}"
-            ipc = get_ipc(sim_dir)
+            ipc = get_ipc(sim_dir, freq_ghz=freq_ghz)
             if ipc is None:
                 print(f"Warning: Could not extract IPC: {sim_dir}", file=sys.stderr)
                 continue

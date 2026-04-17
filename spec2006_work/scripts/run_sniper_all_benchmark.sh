@@ -111,9 +111,9 @@ while IFS= read -r sift_file; do
   # Generate script file
   script_file="${sniper_subcmd_dir}/run_sniper_simpoint_${simpoint}.sh"
 
-  # Calculate roi-icount parameters based on SIMPOINT_INTERVAL
-  WARMUP_LENGTH=$((SIMPOINT_INTERVAL * 20 / 100))
-  DETAILED_LENGTH=$((SIMPOINT_INTERVAL * 80 / 100))
+  # Calculate roi-icount parameters based on SIMPOINT_INTERVAL (no warmup, all detailed)
+  WARMUP_LENGTH=0
+  DETAILED_LENGTH=${SIMPOINT_INTERVAL}
   ROI_ICOUNT_PARAMS="0:${WARMUP_LENGTH}:${DETAILED_LENGTH}"
 
   # Escape extra_config_options for use in heredoc
@@ -142,6 +142,7 @@ DEFAULT_OPTIONS=(
   "-v"
   "-c" "\${CONFIG_BASE}"
   "--roi-script"
+  "--no-cache-warming"
   "-s" "roi-icount:${ROI_ICOUNT_PARAMS}"
   "-c" "general/magic=false"
   "-c" "general/app=${BENCHMARK}"

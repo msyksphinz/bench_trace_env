@@ -67,6 +67,7 @@ RUN_BBV_TARGETS := $(addprefix run_bbv_,$(bench_lists))
 RUN_SIMPOINT_TARGETS := $(addprefix run_simpoint_,$(bench_lists))
 RUN_SIFT_TARGETS := $(addprefix run_sift_,$(bench_lists))
 RUN_SNIPER_TARGETS := $(addprefix run_sniper_,$(bench_lists))
+RUN_FULL_TARGETS := $(addprefix run_full_,$(bench_lists))
 ESTIMATE_IPC_TARGETS := $(addprefix estimate_ipc_,$(bench_lists))
 BUILD_BENCH_TARGETS := $(addprefix build_,$(bench_lists))
 
@@ -94,6 +95,7 @@ help:
 	@echo "  run_simpoint   - Run SimPoint analysis on all BBV results (requires build_simpoint)"
 	@echo "  run_sift       - Generate SIFT traces based on SimPoint results"
 	@echo "  run_sniper     - Run Sniper simulations using SIFT traces"
+	@echo "  run_full       - Run full benchmark via QEMU->FIFO->Sniper (no SimPoint, no SIFT files)"
 	@echo "  estimate_ipc   - Estimate overall IPC using SimPoint weights"
 	@echo "  report_ipc     - Show composite SPEC/GHz from ipc_summary.csv"
 	@echo "  ci-pipeline    - Run full CI pipeline locally (same as GitHub Actions; requires CDROM_DIR)"
@@ -111,6 +113,7 @@ help:
 	@echo "  run_sift_<benchmark>    - Generate SIFT traces for a specific benchmark"
 	@echo "  run_sift_<benchmark>_<subcmd>_<simpoint> - Generate SIFT, run Sniper, and cleanup for a specific SimPoint"
 	@echo "  run_sniper_<benchmark>  - Run Sniper simulation for a specific benchmark"
+	@echo "  run_full_<benchmark>_<subcmd> - Full run via FIFO (no SimPoint): QEMU->FIFO->Sniper"
 	@echo "  estimate_ipc_<benchmark>- Estimate overall IPC and SPEC/GHz for a specific benchmark"
 	@echo "  report_ipc              - Show composite SPEC/GHz (geometric mean) from ipc_summary.csv"
 	@echo ""
@@ -133,6 +136,7 @@ help:
 	@echo "  make run_sift_429.mcf                  # Generate SIFT traces for 429.mcf"
 	@echo "  make run_sift_429.mcf_1_17             # Generate SIFT, run Sniper, cleanup for 429.mcf subcmd=1 simpoint=17"
 	@echo "  make run_sniper_429.mcf                # Run Sniper simulation for 429.mcf"
+	@echo "  make run_full_429.mcf_1               # Full run for 429.mcf subcmd=1 (FIFO, no SimPoint)"
 	@echo "  make estimate_ipc_429.mcf              # Estimate overall IPC for 429.mcf"
 	@echo "  make ci-pipeline                       # Run full CI pipeline (needs CDROM_DIR; same as GitHub Actions)"
 	@echo "  make -j4 run_429.mcf run_401.bzip2     # Run 2 benchmarks in parallel"
@@ -380,6 +384,51 @@ $(RUN_SNIPER_TARGETS):
 	SIMPOINT_INTERVAL=$(SIMPOINT_INTERVAL) \
 	./scripts/run_sniper_all_benchmark.sh $(benchmark)
 
+# Number of specinvoke subcommands per benchmark (ref workload)
+SUBCMD_COUNT_400.perlbench  := 3
+SUBCMD_COUNT_401.bzip2      := 6
+SUBCMD_COUNT_403.gcc        := 9
+SUBCMD_COUNT_429.mcf        := 1
+SUBCMD_COUNT_445.gobmk      := 5
+SUBCMD_COUNT_456.hmmer      := 2
+SUBCMD_COUNT_458.sjeng      := 1
+SUBCMD_COUNT_462.libquantum := 1
+SUBCMD_COUNT_464.h264ref    := 3
+SUBCMD_COUNT_471.omnetpp    := 1
+SUBCMD_COUNT_473.astar      := 2
+SUBCMD_COUNT_483.xalancbmk  := 1
+
+# Generate per-benchmark aggregate targets: run_full_<benchmark> -> run_full_<benchmark>_1 ... _N
+# This allows: make run_full_403.gcc -j9  (runs all 9 subcmds in parallel)
+define make_run_full_bench_target
+run_full_$(1): $(foreach i,$(shell seq 1 $(SUBCMD_COUNT_$(1))),run_full_$(1)_$(i))
+endef
+$(foreach b,$(bench_lists),$(eval $(call make_run_full_bench_target,$(b))))
+
+# Run full benchmark via QEMU->FIFO->Sniper (no SimPoint, no SIFT files on disk)
+# Aggregate target: run all benchmarks (all subcmds)
+# Example: make run_full -j4          (4 benchmarks in parallel, each subcmd sequentially)
+#          make run_full_403.gcc -j9  (all 9 subcmds of 403.gcc in parallel)
+run_full: $(RUN_FULL_TARGETS)
+
+# Individual full-run target: run_full_<benchmark>_<subcmd>
+# Example: make run_full_429.mcf_1
+run_full_%:
+	$(eval benchmark := $(word 1,$(subst _, ,$(subst run_full_,,$@))))
+	$(eval subcmd    := $(word 2,$(subst _, ,$(subst run_full_,,$@))))
+	@SPEC_ROOT=$(SPEC_ROOT) \
+	SPECINVOKE=$(SPECINVOKE) \
+	SNIPER_ROOT=$(SNIPER_ROOT) \
+	PIN_HOME=$(PIN_HOME) \
+	SNIPER_SIM_LD_PATH=$(SNIPER_SIM_LD_PATH) \
+	QEMU=$(QEMU) \
+	QEMU_FLAGS="$(QEMU_FLAGS)" \
+	QEMU_CPU_OPTIONS="$(QEMU_CPU_OPTIONS)" \
+	QEMU_FRONTEND_PLUGIN=$(QEMU_FRONTEND_PLUGIN) \
+	SNIPER_CONFIG_DIR=$(SNIPER_CONFIG_DIR) \
+	SIMULATION_DIR=$(SIMULATION_DIR) \
+	./scripts/run_full_benchmark_fifo.sh $(benchmark) $(subcmd)
+
 # Full CI pipeline (build-qemu, prepare, build, run_bbv, run_simpoint, build_sniper, SIFT+Sniper per SimPoint, estimate_ipc)
 # Run locally: make ci-pipeline [CDROM_DIR=/path/to/spec2006_cdrom] [NPROC=4]
 ci-pipeline:
@@ -437,4 +486,4 @@ clean-sift:
 clean-simulation:
 	rm -rf $(SIMULATION_DIR)
 
-.PHONY: help print-simpoint-config print-simpoint-interval print-simpoint-k extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper estimate_ipc report_ipc ci-pipeline clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_%
+.PHONY: help print-simpoint-config print-simpoint-interval print-simpoint-k extract_iso prepare build build_simpoint run run_bbv run_simpoint run_sift run_sniper run_full estimate_ipc report_ipc ci-pipeline clean clean-results clean-bbv clean-simpoint clean-sift clean-simulation clean-iso clean-simpoint-build $(RUN_BENCH_TARGETS) $(RUN_BBV_TARGETS) $(RUN_SIMPOINT_TARGETS) $(RUN_SIFT_TARGETS) $(RUN_SNIPER_TARGETS) $(RUN_FULL_TARGETS) $(ESTIMATE_IPC_TARGETS) run_sift_%_%_% run_full_%
